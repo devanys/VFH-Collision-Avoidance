@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
-# Parameter dasar
+
 wheel_radius = 0.1
 robot_length = 0.5
 dt = 0.1
@@ -10,13 +10,13 @@ obstacle_radius = 0.5
 v = 2
 obstacle_speed = 0.01
 
-# State awal
+
 x, y, theta = 0.0, 0.0, 0.0
 target = np.array([10.0, 10.0])
 obstacles = np.array([])
 obstacle_directions = np.array([])
 
-# Parameter sensor
+
 num_beams = 40
 sensor_range = 8.0
 field_of_view = np.pi / 3 
@@ -81,11 +81,10 @@ def vector_field_histogram(obstacles, x, y, theta):
     
     min_dist = np.min(distances)
     
-    # Prioritaskan menghindar jika ada garis sektor yang menabrak obstacle
     immediate_avoidance = None
     for i, (collision, angle) in enumerate(zip(sector_collision_flags, sector_angles)):
         if collision:
-            immediate_avoidance = angle + np.pi/2 if i < 2 else angle - np.pi/2  # Belok berlawanan arah
+            immediate_avoidance = angle + np.pi/2 if i < 2 else angle - np.pi/2  
             break
     
     if immediate_avoidance is not None:
@@ -95,9 +94,9 @@ def vector_field_histogram(obstacles, x, y, theta):
         right_clearance = np.mean(sector_distances[3:]) 
         
         if left_clearance < right_clearance:
-            avoidance_angle = sector_angles[np.argmax(sector_distances[3:])+3]  # Pilih sektor kanan yang paling aman
+            avoidance_angle = sector_angles[np.argmax(sector_distances[3:])+3]  
         else:
-            avoidance_angle = sector_angles[np.argmax(sector_distances[:2])]  # Pilih sektor kiri yang paling aman
+            avoidance_angle = sector_angles[np.argmax(sector_distances[:2])]  
     else:
         avoidance_angle = None
     
@@ -122,7 +121,6 @@ def get_direction_label(norm_angle):
     else:
         return "RC"  
 
-# Fungsi untuk input obstacle statis
 def input_obstacle_static(num_obstacles):
     obstacles = []
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -153,13 +151,13 @@ def show_scenario_menu():
     fig, ax = plt.subplots(figsize=(8, 4))
     plt.subplots_adjust(bottom=0.2)
     ax.axis('off')
-    ax.set_title("Pilih Skenario Simulasi", pad=20)
+    ax.set_title("Select Scenario Simulation", pad=20)
     
     ax_static = plt.axes([0.3, 0.5, 0.4, 0.2])
-    btn_static = Button(ax_static, 'Skenario Statis')
+    btn_static = Button(ax_static, 'Scenario Static')
     
     ax_dynamic = plt.axes([0.3, 0.2, 0.4, 0.2])
-    btn_dynamic = Button(ax_dynamic, 'Skenario Dinamis')
+    btn_dynamic = Button(ax_dynamic, 'Scenario Dynamic')
     
     scenario_choice = {'choice': None}
     
@@ -185,9 +183,9 @@ if __name__ == "__main__":
         num_obstacles = 0
         while num_obstacles < 1 or num_obstacles > 3:
             try:
-                num_obstacles = int(input("Masukkan jumlah obstacle (1-3): "))
+                num_obstacles = int(input("Add obstacles (1-3): "))
             except ValueError:
-                print("Harap masukkan angka antara 1-3")
+                print("Please Between 1-3")
         
         obstacles = input_obstacle_static(num_obstacles)
         obstacle_directions = np.zeros_like(obstacles)
@@ -200,8 +198,7 @@ if __name__ == "__main__":
     
     plt.figure(figsize=(14, 8))
     plt.subplots_adjust(right=0.7)
-    
-    # Simulasi utama
+
     for i in range(500):
         alpha = pure_pursuit(target, x, y, theta)
         avoidance_angle, min_dist, distances, sector_labels, sector_distances, sector_angles, sector_collisions = vector_field_histogram(obstacles, x, y, theta)
@@ -255,7 +252,7 @@ if __name__ == "__main__":
         main_ax.set_xlim(-2, 12)
         main_ax.set_ylim(-2, 12)
         main_ax.set_aspect('equal', adjustable='box')
-        main_ax.set_title("Simulasi VFH dengan Sektor Collision Detection")
+        main_ax.set_title("VFH Simulation ")
         main_ax.legend(loc='upper left')
         
         # Panel
@@ -264,35 +261,33 @@ if __name__ == "__main__":
         
         info_y = 0.95
         info_ax.text(0.1, info_y, "Robot Info:", fontsize=12, weight='bold')
-        info_ax.text(0.1, info_y-0.05, f"Posisi: ({x:.2f}, {y:.2f})", fontsize=10)
-        info_ax.text(0.1, info_y-0.10, f"Orientasi: {theta:.2f} rad", fontsize=10)
-        info_ax.text(0.1, info_y-0.15, f"Kecepatan: {v:.2f} m/s", fontsize=10)
+        info_ax.text(0.1, info_y-0.05, f"Position: ({x:.2f}, {y:.2f})", fontsize=10)
+        info_ax.text(0.1, info_y-0.10, f"Orientation: {theta:.2f} rad", fontsize=10)
+        info_ax.text(0.1, info_y-0.15, f"Speed: {v:.2f} m/s", fontsize=10)
         
         info_ax.text(0.1, info_y-0.25, "Target Info:", fontsize=12, weight='bold')
-        info_ax.text(0.1, info_y-0.30, f"Posisi: ({target[0]}, {target[1]})", fontsize=10)
-        info_ax.text(0.1, info_y-0.35, f"Jarak: {np.hypot(target[0]-x, target[1]-y):.2f}m", fontsize=10)
+        info_ax.text(0.1, info_y-0.30, f"Position: ({target[0]}, {target[1]})", fontsize=10)
+        info_ax.text(0.1, info_y-0.35, f"Distance: {np.hypot(target[0]-x, target[1]-y):.2f}m", fontsize=10)
         
         info_ax.text(0.1, info_y-0.45, "Obstacle Info:", fontsize=12, weight='bold')
         info_ax.text(0.1, info_y-0.50, f"Jarak Min: {min_dist:.2f}m", fontsize=10)
         
-        info_ax.text(0.1, info_y-0.60, "Sektor Collision:", fontsize=12, weight='bold')
+        info_ax.text(0.1, info_y-0.60, "Sectors Collision:", fontsize=12, weight='bold')
         for i, (label, collision) in enumerate(zip(sector_labels, sector_collisions)):
             info_ax.text(0.1, info_y-0.65-(i*0.05), f"{label}: {'HIT' if collision else 'clear'}", 
                         color='red' if collision else 'black', fontsize=10)
         
-        # Polar histogram visual
         polar_ax = plt.axes([0.72, 0.1, 0.25, 0.25])
         polar_angles = np.linspace(-field_of_view, field_of_view, num_beams)
         bars = polar_ax.bar(polar_angles, distances, width=0.1, color='red', alpha=0.6)
         
-        # Garis pembatas sektor
         for angle in np.linspace(-field_of_view, field_of_view, 6):
             polar_ax.axvline(angle, color='blue', linestyle='--', alpha=0.5, linewidth=0.5)
         
         polar_ax.set_xticks(np.linspace(-field_of_view, field_of_view, 5))
         polar_ax.set_xticklabels(sector_labels, fontsize=8)
         polar_ax.set_title("Polar Histogram", fontsize=10)
-        polar_ax.set_ylabel("Jarak (m)", fontsize=8)
+        polar_ax.set_ylabel("Distance (m)", fontsize=8)
         polar_ax.grid(True)
         
         plt.pause(0.01)
