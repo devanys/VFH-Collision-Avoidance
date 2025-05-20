@@ -255,7 +255,6 @@ if __name__ == "__main__":
         main_ax.set_title("VFH Simulation ")
         main_ax.legend(loc='upper left')
         
-        # Panel
         info_ax = plt.axes([0.72, 0.1, 0.25, 0.8])
         info_ax.axis('off')
         
@@ -270,7 +269,7 @@ if __name__ == "__main__":
         info_ax.text(0.1, info_y-0.35, f"Distance: {np.hypot(target[0]-x, target[1]-y):.2f}m", fontsize=10)
         
         info_ax.text(0.1, info_y-0.45, "Obstacle Info:", fontsize=12, weight='bold')
-        info_ax.text(0.1, info_y-0.50, f"Jarak Min: {min_dist:.2f}m", fontsize=10)
+        info_ax.text(0.1, info_y-0.50, f"Distance Min: {min_dist:.2f}m", fontsize=10)
         
         info_ax.text(0.1, info_y-0.60, "Sectors Collision:", fontsize=12, weight='bold')
         for i, (label, collision) in enumerate(zip(sector_labels, sector_collisions)):
