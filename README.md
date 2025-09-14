@@ -1,6 +1,8 @@
 # VFH for Collision Avoidance
 ![Screenshot 2024-11-02 163145](https://github.com/user-attachments/assets/8888b4bd-2611-4a3a-a0bb-dc32d3a21273)
+[![Watch the video](https://img.youtube.com/vi/VteC_HYPnDo/maxresdefault.jpg)](https://youtu.be/VteC_HYPnDo)
 
+### [3D simulation](https://youtu.be/VteC_HYPnDo)
 # Robot Navigation Simulation with Pure Pursuit and Vector Field Histogram
 
 This project simulates a robot navigating towards a target while avoiding dynamic obstacles using the **Pure Pursuit** Method for path following and **Vector Field Histogram (VFH)** for obstacle avoidance.
