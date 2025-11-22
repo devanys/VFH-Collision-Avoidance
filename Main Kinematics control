@@ -1,0 +1,234 @@
+import pybullet as p
+import pybullet_data
+import numpy as np
+import time
+import os
+import socket
+
+DT = 0.05
+
+LINEAR_SPEED = 2.0
+WHEEL_RADIUS = 0.1
+HALF_WHEELBASE = 0.25
+TOLERANCE = 0.2
+
+TARGET = np.array([10.0, 10.0])
+
+NUM_OBSTACLES = 5
+OBSTACLE_RADIUS = 0.5
+OBSTACLE_SPEED = 0.01
+OBSTACLE_AREA_MIN = 1.0
+OBSTACLE_AREA_MAX = 9.0
+
+NUM_BEAMS = 40
+SENSOR_RANGE = 8.0
+FIELD_OF_VIEW = np.pi / 3
+AVOIDANCE_THRESHOLD = 1.5
+
+robot_path = "turtlebot.urdf"
+
+SEND_UDP = True
+ARDUINO_IP = "192.168.1.99"
+ARDUINO_PORT = 5005
+
+def find_wheel_joints(robot):
+    n = p.getNumJoints(robot)
+    left = []; right = []
+    for i in range(n):
+        name = p.getJointInfo(robot, i)[1].decode().lower()
+        if "left" in name and "wheel" in name:
+            left.append(i)
+        if "right" in name and "wheel" in name:
+            right.append(i)
+
+    if not left or not right:
+        for i in range(n):
+            if p.getJointInfo(robot, i)[2] == p.JOINT_REVOLUTE:
+                if len(left) <= len(right):
+                    left.append(i)
+                else:
+                    right.append(i)
+
+    return sorted(left), sorted(right)
+
+
+def pure_pursuit_angle(target, x, y, yaw):
+    dx = target[0] - x
+    dy = target[1] - y
+    desired = np.arctan2(dy, dx)
+    alpha = np.arctan2(np.sin(desired - yaw), np.cos(desired - yaw))
+    return alpha, desired
+
+
+def lidar_beams_from_pose(px, py, yaw):
+    angles_local = np.linspace(-FIELD_OF_VIEW, FIELD_OF_VIEW, NUM_BEAMS)
+    angles_world = angles_local + yaw
+
+    from_pos = []
+    to_pos = []
+    for ang in angles_world:
+        f = (px, py, 0.15)
+        t = (px + SENSOR_RANGE * np.cos(ang),
+             py + SENSOR_RANGE * np.sin(ang),
+             0.15)
+        from_pos.append(f)
+        to_pos.append(t)
+
+    return from_pos, to_pos, angles_world
+
+
+def vfh_using_rays(px, py, yaw):
+    from_pos, to_pos, angles = lidar_beams_from_pose(px, py, yaw)
+    results = p.rayTestBatch(from_pos, to_pos)
+
+    distances = np.full(NUM_BEAMS, SENSOR_RANGE)
+    for i, r in enumerate(results):
+        hit_obj = r[0]
+        hit_frac = r[2]
+        if hit_obj >= 0:
+            distances[i] = hit_frac * SENSOR_RANGE
+
+    safe_idx = int(np.argmax(distances))
+    safe_angle = angles[safe_idx]
+    min_dist = float(np.min(distances))
+
+    return safe_angle, min_dist, distances, angles
+
+
+def set_wheel_velocities(robot, left, right, v_lin, w_ang):
+    vl = (v_lin - w_ang * HALF_WHEELBASE) / WHEEL_RADIUS
+    vr = (v_lin + w_ang * HALF_WHEELBASE) / WHEEL_RADIUS
+
+    for j in left:
+        p.setJointMotorControl2(robot, j, p.VELOCITY_CONTROL,
+                                targetVelocity=vl, force=200)
+    for j in right:
+        p.setJointMotorControl2(robot, j, p.VELOCITY_CONTROL,
+                                targetVelocity=vr, force=200)
+
+    return vl, vr
+
+if SEND_UDP:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(False)
+    arduino_addr = (ARDUINO_IP, ARDUINO_PORT)
+
+if not os.path.exists(robot_path):
+    raise FileNotFoundError("robot_path tidak ditemukan!")
+
+p.connect(p.GUI)
+p.setAdditionalSearchPath(pybullet_data.getDataPath())
+p.resetSimulation()
+p.setGravity(0, 0, -9.81)
+p.setTimeStep(DT)
+
+p.loadURDF("plane.urdf")
+
+robot = p.loadURDF(robot_path, [0, 0, 0.1], p.getQuaternionFromEuler([0, 0, 0]))
+left_joints, right_joints = find_wheel_joints(robot)
+
+print("Detected left wheel joints:", left_joints)
+print("Detected right wheel joints:", right_joints)
+
+# obstacles
+obstacle_ids = []
+obs_pos = []
+obs_dir = []
+rng = np.random.default_rng(1234)
+
+for i in range(NUM_OBSTACLES):
+    x = rng.uniform(1 + OBSTACLE_RADIUS, 9 - OBSTACLE_RADIUS)
+    y = rng.uniform(1 + OBSTACLE_RADIUS, 9 - OBSTACLE_RADIUS)
+    col = p.createCollisionShape(p.GEOM_SPHERE, radius=OBSTACLE_RADIUS)
+    vis = p.createVisualShape(p.GEOM_SPHERE, radius=OBSTACLE_RADIUS,
+                              rgbaColor=[0.7, 0.1, 0.7, 1])
+
+    oid = p.createMultiBody(0.2, col, vis, [x, y, OBSTACLE_RADIUS])
+    obstacle_ids.append(oid)
+
+    obs_pos.append([x, y])
+    d = rng.standard_normal(2); d /= np.linalg.norm(d)
+    obs_dir.append(d)
+
+obs_pos = np.array(obs_pos)
+obs_dir = np.array(obs_dir)
+
+
+p.resetDebugVisualizerCamera(cameraDistance=12, cameraYaw=40,
+                             cameraPitch=-35, cameraTargetPosition=[4,4,0])
+
+for step in range(5000):
+
+    pos, orn = p.getBasePositionAndOrientation(robot)
+    yaw = p.getEulerFromQuaternion(orn)[2]
+    px, py, _ = pos
+
+    dist_to_target = np.hypot(TARGET[0] - px, TARGET[1] - py)
+
+    safe_angle, min_dist, distances, angles = vfh_using_rays(px, py, yaw)
+    alpha, desired_heading = pure_pursuit_angle(TARGET, px, py, yaw)
+
+    if min_dist < AVOIDANCE_THRESHOLD:
+        ref_heading = safe_angle
+    else:
+        ref_heading = desired_heading
+
+    angle_err = np.arctan2(np.sin(ref_heading - yaw),
+                           np.cos(ref_heading - yaw))
+
+    K_turn = 1.2
+    w = np.clip(K_turn * angle_err, -2.0, 2.0)
+    forward = LINEAR_SPEED * max(0.1, np.cos(angle_err))
+
+    vl, vr = set_wheel_velocities(robot, left_joints, right_joints,
+                                  forward, w)
+
+    thl = p.getJointState(robot, left_joints[0])[0]
+    thr = p.getJointState(robot, right_joints[0])[0]
+
+    if SEND_UDP:
+        try:
+            msg = f"VL:{vl:.4f} VR:{vr:.4f} PSI:{yaw:.4f} THL:{thl:.4f} THR:{thr:.4f}\n"
+            sock.sendto(msg.encode(), arduino_addr)
+        except:
+            pass
+
+    from_pos, to_pos, angs = lidar_beams_from_pose(px, py, yaw)
+    for i, (f, t) in enumerate(zip(from_pos, to_pos)):
+        if distances[i] < SENSOR_RANGE:
+            t = (
+                f[0] + distances[i] * np.cos(angs[i]),
+                f[1] + distances[i] * np.sin(angs[i]),
+                0.15
+            )
+
+        color = [0,1,0] if distances[i] >= 0.9*SENSOR_RANGE else [1,0,0]
+
+        p.addUserDebugLine(f, t, lineColorRGB=color,
+                           lifeTime=0.8, lineWidth=2.0)
+
+    if step % 50 == 0:
+        print(f"Step {step} | PSI={yaw:.2f} THL={thl:.2f} THR={thr:.2f}")
+
+    # move obstacles
+    obs_pos += obs_dir * OBSTACLE_SPEED
+    for i in range(NUM_OBSTACLES):
+        if obs_pos[i,0] < OBSTACLE_AREA_MIN or obs_pos[i,0] > OBSTACLE_AREA_MAX:
+            obs_dir[i,0] *= -1
+        if obs_pos[i,1] < OBSTACLE_AREA_MIN or obs_pos[i,1] > OBSTACLE_AREA_MAX:
+            obs_dir[i,1] *= -1
+
+        p.resetBasePositionAndOrientation(obstacle_ids[i],
+                                          [obs_pos[i,0], obs_pos[i,1], OBSTACLE_RADIUS],
+                                          [0,0,0,1])
+
+    if dist_to_target < TOLERANCE:
+        print("Target reached!")
+        break
+
+    p.stepSimulation()
+    time.sleep(DT)
+
+p.disconnect()
+if SEND_UDP:
+    sock.close()
