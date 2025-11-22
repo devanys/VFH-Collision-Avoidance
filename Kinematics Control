@@ -1,0 +1,75 @@
+#include <WiFiS3.h>
+#include <WiFiUdp.h>
+const char* SSID = " ";
+const char* PASS = " ";
+
+IPAddress ip(192,168,1,99);
+IPAddress gateway(192,168,1,1);
+IPAddress subnet(255,255,255,0);
+
+WiFiUDP Udp;
+const int UDP_PORT = 5005;
+
+float vlin = 0;
+float vang = 0;
+float psi  = 0;
+float thL  = 0;
+float thR  = 0;
+
+bool parsePacket(const char* buf) {
+  return sscanf(buf,
+    "VLIN:%f VANG:%f PSI:%f THL:%f THR:%f",
+    &vlin, &vang, &psi, &thL, &thR
+  ) == 5;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  WiFi.config(ip, gateway, subnet);
+  WiFi.begin(SSID, PASS);
+
+  Serial.print("Connecting");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+
+  Serial.println("\nConnected!");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+
+  Udp.begin(UDP_PORT);
+  Serial.print("Listening on UDP ");
+  Serial.println(UDP_PORT);
+}
+
+void loop() {
+
+  int len = Udp.parsePacket();
+  if (len) {
+    char buf[120];
+    int r = Udp.read(buf, 119);
+    buf[r] = '\0';
+
+    if (parsePacket(buf)) {
+      Serial.print("Vlin=");
+      Serial.print(vlin,3);
+
+      Serial.print(" | Vang=");
+      Serial.print(vang,3);
+
+      Serial.print(" | Psi=");
+      Serial.print(psi,2);
+
+      Serial.print(" deg | ThetaL=");
+      Serial.print(thL,3);
+
+      Serial.print(" rad | ThetaR=");
+      Serial.println(thR,3);
+    } else {
+      Serial.print("RAW: ");
+      Serial.println(buf);
+    }
+  }
+}
